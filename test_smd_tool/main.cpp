@@ -5098,6 +5098,165 @@ public:
     }
 };
 
+class Convert_HD_Op4_Grunt_To_HD_Grunt_Sequences 
+{
+public:
+    void Invoke()
+    {
+        constexpr const char* INPUT_DIRECTORY_OP4_HGRUNT = INPUT_DIRECTORY_BASE "/""gearbox/hd/hgrunt_opfor";
+
+        constexpr const char* TARGET_DIRECTORY = TARGET_DIRECTORY_BASE"/""shared/animations/hgrunt_opfor/hd";
+        constexpr const char* TARGET_REFERENCE = TARGET_DIRECTORY_BASE"/""hgrunt_opfor/meshes/hd/torso_regular_reference.smd";
+
+        SMDFileLoader smd_loader;
+        SMDSerializer smd_serializer;
+
+        s_animation_t target_reference;
+        smd_loader.LoadAnimation(TARGET_REFERENCE, target_reference);
+
+        AnimationPipeline p(smd_loader);
+        Variable var_target_reference;
+        p.SetContextReference("input_reference", target_reference, &var_target_reference);
+
+        const std::list<const char*> op4_hd_grunt_animations = {
+            "hgrunt_on_stretcher",
+        };
+
+        p.RegisterFiles(
+            op4_hd_grunt_animations,
+            INPUT_DIRECTORY_OP4_HGRUNT,
+            INPUT_DIRECTORY_OP4_HGRUNT); // First time, the original animation directory is the same as input directory.
+
+        //=================================================================================
+        // Rename bones
+        //=================================================================================
+        OperationList rename_hd_op4_bones("Rename HD Op4 bones");
+        RenameBoneOperation op_rb2({
+
+            { "Bip01 L Clavicle", "Bip01 L Arm" },
+            { "Bip01 L UpperArm", "Bip01 L Arm1" },
+            { "Bip01 L Forearm", "Bip01 L Arm2" },
+            { "Bip01 L Thigh", "Bip01 L Leg" },
+            { "Bip01 L Calf", "Bip01 L Leg1" },
+
+            { "Bip01 R Clavicle", "Bip01 R Arm" },
+            { "Bip01 R UpperArm", "Bip01 R Arm1" },
+            { "Bip01 R Forearm", "Bip01 R Arm2" },
+            { "Bip01 R Thigh", "Bip01 R Leg" },
+            { "Bip01 R Calf", "Bip01 R Leg1" },
+
+        }); rename_hd_op4_bones.AddOperation(&op_rb2);
+        
+        p.AddOperationToAllFiles(&rename_hd_op4_bones);
+
+        //=================================================================================
+        // Remove unnecessary bones.
+        //=================================================================================
+        RemoveBoneOperation op_rem_b_2({
+            "saw_world",
+            "SHOTGUN",
+            "M4",
+            "Bone06",
+            "Bone05",
+        });
+        p.AddOperationToAllFiles(&op_rem_b_2);
+
+        //=================================================================================
+        // Common transformations
+        //=================================================================================
+        OperationList common_transformations("Common transformations");
+
+        FixupBonesLengthsOperation op_fbl; common_transformations.AddOperation(&op_fbl);
+
+        // Move the pelvis to the same location as the original anim pelvis.
+        TranslateToBoneInWorldSpaceOperation op_pelvis_translation(
+            "Bip01 Pelvis", "Bip01 Pelvis", "original_animation"
+        ); common_transformations.AddOperation(&op_pelvis_translation);
+
+        p.AddOperationToAllFiles(&common_transformations);
+
+        //=================================================================================
+        // Make foots stand where the foots are in the original animations.
+        //=================================================================================
+
+#if 0
+        SolveFootsOperation op_solve_foot(
+            "Bip01 L Foot", "Bip01 R Foot", "Bip01 Pelvis",
+            "Bip01 L Foot", "Bip01 R Foot"
+        );
+        p.AddOperationToFiles(&op_solve_foot, {
+            "hgrunt_on_stretcher",
+        });
+#endif
+
+        //=================================================================================
+        // Write operations.
+        //=================================================================================
+
+        OperationList write_operations("Write output files");
+        //WriteOBJOperation op_wobj(TARGET_DIRECTORY, smd_serializer); write_operations.AddOperation(&op_wobj);
+        WriteAnimationOperation op_wanim(TARGET_DIRECTORY, smd_serializer); write_operations.AddOperation(&op_wanim);
+        p.AddOperationToAllFiles(&write_operations);
+
+        p.Invoke();
+    }
+};
+
+class Convert_HD_Op4_Grunt_To_HD_Massn_Sequences 
+{
+public:
+    void Invoke()
+    {
+        constexpr const char* INPUT_DIRECTORY_OP4_HGRUNT = TARGET_DIRECTORY_BASE "/""shared/animations/hgrunt_opfor/hd";
+
+        constexpr const char* TARGET_DIRECTORY = TARGET_DIRECTORY_BASE"/""massn/animations/hd";
+        constexpr const char* TARGET_REFERENCE = TARGET_DIRECTORY_BASE"/""massn/meshes/ld/Massn_reference.smd";
+
+        SMDFileLoader smd_loader;
+        SMDSerializer smd_serializer;
+
+        s_animation_t target_reference;
+        smd_loader.LoadAnimation(TARGET_REFERENCE, target_reference);
+
+        AnimationPipeline p(smd_loader);
+        Variable var_target_reference;
+        p.SetContextReference("input_reference", target_reference, &var_target_reference);
+
+        const std::list<const char*> op4_hd_grunt_animations = {
+            "hgrunt_on_stretcher",
+        };
+
+        p.RegisterFiles(
+            op4_hd_grunt_animations,
+            INPUT_DIRECTORY_OP4_HGRUNT,
+            INPUT_DIRECTORY_OP4_HGRUNT); // First time, the original animation directory is the same as input directory.
+
+        //=================================================================================
+        // Common transformations
+        //=================================================================================
+        OperationList common_transformations("Common transformations");
+
+        FixupBonesLengthsOperation op_fbl; common_transformations.AddOperation(&op_fbl);
+
+        // Move the pelvis to the same location as the original anim pelvis.
+        TranslateToBoneInWorldSpaceOperation op_pelvis_translation(
+            "Bip01 Pelvis", "Bip01 Pelvis", "original_animation"
+        ); common_transformations.AddOperation(&op_pelvis_translation);
+
+        p.AddOperationToAllFiles(&common_transformations);
+
+        //=================================================================================
+        // Write operations.
+        //=================================================================================
+
+        OperationList write_operations("Write output files");
+        WriteAnimationOperation op_wanim(TARGET_DIRECTORY, smd_serializer); write_operations.AddOperation(&op_wanim);
+        p.AddOperationToAllFiles(&write_operations);
+
+        p.Invoke();
+    }
+};
+
 int main()
 {
 #ifdef _DEBUG
@@ -5189,6 +5348,12 @@ int main()
     Fix_HD_Crossbow_Sequences().Invoke();
 #endif
 
+#if 0
+    Convert_HD_Op4_Grunt_To_HD_Grunt_Sequences().Invoke();
+#endif
+#if 1
+    Convert_HD_Op4_Grunt_To_HD_Massn_Sequences().Invoke();
+#endif
 
     //convert_HD_HL1_animations_to_LD_BlueShift(); // OBSOLETE !! DON'T DO
 
