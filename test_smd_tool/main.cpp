@@ -5185,7 +5185,7 @@ int main()
 #if 0
     Convert_HD_Massn_To_HD_HL1_Grunt_Sequences().Invoke();
 #endif
-#if 1
+#if 0
     Fix_HD_Crossbow_Sequences().Invoke();
 #endif
 
