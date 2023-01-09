@@ -1087,7 +1087,7 @@ private:
 
 
 #define INPUT_DIRECTORY_BASE "C:/Users/marc-/Documents/GitHub/decompiled_hl_models"
-#define TARGET_DIRECTORY_BASE "C:/Users/marc-/Documents/GitHub/custom-hl-viewmodels/modelsrc"
+#define TARGET_DIRECTORY_BASE "C:/Users/marc-/Documents/GitHub/halflife-unified-sdk-assets/modelsrc/models"
 
 class Convert_LD_BlueShift_animations_to_LD_HL1
 {
