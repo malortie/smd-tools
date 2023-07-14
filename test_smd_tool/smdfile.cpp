@@ -1005,6 +1005,61 @@ void SMDHelper::SolveFoots(
 
 }
 
+//
+// This assumes the input animation is identical to the original animation.
+//
+void SMDHelper::SolveFoot(
+	s_animation_t& anim,
+	const char* anim_foot_name,
+	const char* anim_pelvis_name,
+	const s_animation_t& original_animation,
+	const char* original_anim_foot_name)
+{
+	int anim_foot_index = FindNodeByName(anim.nodes, anim_foot_name);
+	int anim_pelvis_index = FindNodeByName(anim.nodes, anim_pelvis_name);
+
+	int original_anim_foot_index = FindNodeByName(original_animation.nodes, original_anim_foot_name);
+
+	for (int t = 0; t < anim.frames.size(); ++t)
+	{
+		const auto& original_anim_foot = original_animation.frames[t].entries[original_anim_foot_index];
+
+		const auto& anim_left_foot = anim.frames[t].entries[anim_foot_index];
+		auto& anim_pelvis = anim.frames[t].entries[anim_pelvis_index];
+
+		// All in worldspace.
+		const glm::vec3& orig_anim_foot_pos = original_anim_foot.world_transform[3];
+
+		const glm::vec3& anim_foot_pos = anim_left_foot.world_transform[3];
+
+		glm::vec3 anim_pelvis_pos = anim_pelvis.world_transform[3];
+
+		anim_pelvis_pos += orig_anim_foot_pos - anim_foot_pos;
+
+		auto set_pelvis_world_position = [&](const glm::vec3& new_pos) {
+			anim_pelvis.world_transform[3] = glm::vec4(new_pos, 1.0f);
+
+			if (anim.nodes[anim_pelvis_index].parent == -1)
+			{
+				anim_pelvis.local_transform = anim_pelvis.world_transform;
+			}
+			else
+			{
+				auto& anim_pelvis_parent = anim.frames[t].entries[anim.nodes[anim_pelvis_index].parent];
+				anim_pelvis.local_transform = glm::inverse(anim_pelvis_parent.world_transform) * anim_pelvis.world_transform;
+			}
+
+			UpdateBoneHierarchyWorldTransformFromLocalTransform(anim, anim_pelvis_index, t);
+		};
+
+		set_pelvis_world_position(anim_pelvis_pos);
+	}
+
+	int a = 2;
+	a++;
+
+}
+
 // This assumes anim and target anim have the same frame count and are alike.
 void SMDHelper::TranslateToBoneInWorldSpace(
 	s_animation_t& anim,

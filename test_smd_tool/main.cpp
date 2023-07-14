@@ -583,6 +583,42 @@ private:
     std::string _original_anim_right_foot;
 };
 
+class SolveFootOperation : public Operation
+{
+public:
+
+    SolveFootOperation(
+        const char* anim_foot_name,
+        const char* anim_pelvis_name, 
+        const char* original_anim_foot_name) : 
+        _anim_foot(anim_foot_name),
+        _anim_pelvis(anim_pelvis_name),
+        _original_anim_foot(original_anim_foot_name)
+    {
+    }
+
+    const char* GetDescription() const override { return "SolveFootOperation"; }
+
+    void Invoke(OperationContext* const context) override
+    {
+        auto& animation = *context->GetAnimation("animation");
+        const auto& original_animation = *context->GetAnimation("original_animation");
+        SMDHelper::SolveFoot(
+            animation,
+            _anim_foot.c_str(),
+            _anim_pelvis.c_str(),
+            original_animation,
+            _original_anim_foot.c_str()
+        );
+    }
+
+private:
+
+    std::string _anim_foot;
+    std::string _anim_pelvis;
+    std::string _original_anim_foot;
+};
+
 class TranslateToBoneInWorldSpaceOperation : public Operation
 {
 public:
@@ -5257,6 +5293,662 @@ public:
     }
 };
 
+class Convert_LD_HL1_Zombie_Soldier_To_LD_HL1_Zombie_Sequences
+{
+public:
+    void Invoke()
+    {
+        constexpr const char* INPUT_DIRECTORY_LD_ZOMBIE = INPUT_DIRECTORY_BASE"/""gearbox/ld/zombie_soldier";
+
+        constexpr const char* TARGET_DIRECTORY = TARGET_DIRECTORY_BASE"/""shared/animations/zombies";
+        constexpr const char* TARGET_REFERENCE = INPUT_DIRECTORY_BASE"/""hl1/ld/zombie/idle1.smd"; // Used for animation bone length because the LD reference is scaled up.
+        //constexpr const char* TARGET_REFERENCE = INPUT_DIRECTORY_BASE"/""hl1/ld/zombie/Zom3_Template_Biped(White_Suit)1.smd"; // Used for animation bone length because the LD reference is scaled up.
+
+        SMDFileLoader smd_loader;
+        SMDSerializer smd_serializer;
+
+        s_animation_t target_reference;
+        smd_loader.LoadAnimation(TARGET_REFERENCE, target_reference);
+
+        AnimationPipeline p(smd_loader);
+        Variable var_target_reference;
+        p.SetContextReference("input_reference", target_reference, &var_target_reference);
+
+        const std::list<const char*> op4_zombie_soldier_ld_animations = {
+            "dead_on_back",
+            "dead_on_stomach",
+            "throw_scientist",
+            "get_off_table",
+            "table_breathe",
+        };
+
+        p.RegisterFiles(
+            op4_zombie_soldier_ld_animations,
+            INPUT_DIRECTORY_LD_ZOMBIE,
+            INPUT_DIRECTORY_LD_ZOMBIE); // First time, the original animation directory is the same as input directory.
+
+
+        //=================================================================================
+        // Common transformations
+        //=================================================================================
+        OperationList common_transformations("Common transformations");
+
+        // Remove bone that are not needed for animation.
+        RemoveBoneOperation op_br({
+            "Bone01",
+            "Bone02",
+            "Bone07",
+            "Bone08",
+            "Bone10",
+            "Bone11",
+        }); common_transformations.AddOperation(&op_br);
+
+        RenameBoneOperation op_rn_spine_bones({
+            { "Bip01 L Thigh", "Bip01 L Leg" },
+            { "Bip01 L Calf", "Bip01 L Leg1" },
+            { "Bip01 L Clavicle", "Bip01 L Arm" },
+            { "Bip01 L UpperArm", "Bip01 L Arm1" },
+            { "Bip01 L Forearm", "Bip01 L Arm2" },
+
+            { "Bip01 R Thigh", "Bip01 R Leg" },
+            { "Bip01 R Calf", "Bip01 R Leg1" },
+            { "Bip01 R Clavicle", "Bip01 R Arm" },
+            { "Bip01 R UpperArm", "Bip01 R Arm1" },
+            { "Bip01 R Forearm", "Bip01 R Arm2" },
+
+        }); common_transformations.AddOperation(&op_rn_spine_bones);
+
+        FixupBonesLengthsOperation op_fbl; common_transformations.AddOperation(&op_fbl);
+
+        // Move the pelvis to the same location as the original anim pelvis.
+        TranslateToBoneInWorldSpaceOperation op_pelvis_translation(
+            "Bip01 Pelvis", "Bip01 Pelvis", "original_animation"
+        ); common_transformations.AddOperation(&op_pelvis_translation);
+       
+        p.AddOperationToAllFiles(&common_transformations);
+
+        //=================================================================================
+        // Make foots stand where the foots are in the original animations.
+        //=================================================================================
+
+        // Stand at the same position as the left foot.
+        SolveFootOperation op_solve_foot(
+            "Bip01 L Foot", "Bip01 Pelvis",
+            "Bip01 L Foot"
+        );
+        p.AddOperationToFiles(&op_solve_foot, {
+            "throw_scientist",
+            //"get_off_table",
+            //"table_breathe",
+        });
+
+        TranslateBoneInLocalSpaceOperation op_translations_local({
+            { "Bip01", glm::vec3(0, 0, -2.8) },
+        });
+
+        p.AddOperationToFiles(&op_translations_local, {
+            "throw_scientist",
+        });
+
+        //=================================================================================
+        // Write operations.
+        //=================================================================================
+
+        OperationList write_operations("Write output files");
+        //WriteOBJOperation op_wobj(TARGET_DIRECTORY, smd_serializer); write_operations.AddOperation(&op_wobj);
+        WriteAnimationOperation op_wanim(TARGET_DIRECTORY, smd_serializer); write_operations.AddOperation(&op_wanim);
+        p.AddOperationToAllFiles(&write_operations);
+
+        p.Invoke();
+    }
+};
+
+class Convert_LD_HL1_Zombie_To_LD_Op4_Zombie_Soldier_Sequences
+{
+public:
+    void Invoke()
+    {
+        constexpr const char* INPUT_DIRECTORY_LD_ZOMBIE = INPUT_DIRECTORY_BASE"/""hl1/ld/zombie";
+
+        constexpr const char* TARGET_DIRECTORY = TARGET_DIRECTORY_BASE"/""zombie_soldier/animations";
+        constexpr const char* TARGET_REFERENCE = INPUT_DIRECTORY_BASE"/""gearbox/ld/zombie_soldier/idle1.smd"; // Used for animation bone length because the LD reference is scaled up.
+
+        SMDFileLoader smd_loader;
+        SMDSerializer smd_serializer;
+
+        s_animation_t target_reference;
+        smd_loader.LoadAnimation(TARGET_REFERENCE, target_reference);
+
+        AnimationPipeline p(smd_loader);
+        Variable var_target_reference;
+        p.SetContextReference("input_reference", target_reference, &var_target_reference);
+
+        const std::list<const char*> hl1_zombie_ld_animations = {
+            "pause",
+            "busting_through_wall",
+            "kick_punch_wall",
+            "bust_window",
+            "soda",
+            "slideidle",
+            "slidewall",
+            "ventclimbidle",
+            "ventclimb",
+            "deadidle",
+            "deadwall",
+            "freakdie",
+            "freak",
+            "eatbodytable",
+            "eatbody",
+            "eatbodystand",
+            "ripdoor",
+            "zombie_pull_scientist",
+            "zombie_eating",
+            "eat_to_stand",
+            "vent_zidle",
+            "vent_c1a3",
+            "haulzombie",
+            "c2a3_snack_getup",
+        };
+
+        p.RegisterFiles(
+            hl1_zombie_ld_animations,
+            INPUT_DIRECTORY_LD_ZOMBIE,
+            INPUT_DIRECTORY_LD_ZOMBIE); // First time, the original animation directory is the same as input directory.
+
+
+        //=================================================================================
+        // Common transformations
+        //=================================================================================
+        OperationList common_transformations("Common transformations");
+
+        // Remove bone that are not needed for animation.
+        RemoveBoneOperation op_br({
+            "Bone01",
+            "Bone04",
+            "Bone07",
+        }); common_transformations.AddOperation(&op_br);
+
+        RenameBoneOperation op_rn_spine_bones({
+            { "Bip01 L Leg", "Bip01 L Thigh" },
+            { "Bip01 L Leg1", "Bip01 L Calf" },
+            { "Bip01 L Arm", "Bip01 L Clavicle" },
+            { "Bip01 L Arm1", "Bip01 L UpperArm" },
+            { "Bip01 L Arm2", "Bip01 L Forearm" },
+
+            { "Bip01 R Leg", "Bip01 R Thigh" },
+            { "Bip01 R Leg1", "Bip01 R Calf" },
+            { "Bip01 R Arm", "Bip01 R Clavicle" },
+            { "Bip01 R Arm1", "Bip01 R UpperArm" },
+            { "Bip01 R Arm2", "Bip01 R Forearm" },
+
+        }); common_transformations.AddOperation(&op_rn_spine_bones);
+
+        FixupBonesLengthsOperation op_fbl; common_transformations.AddOperation(&op_fbl);
+
+        // Move the pelvis to the same location as the original anim pelvis.
+        TranslateToBoneInWorldSpaceOperation op_pelvis_translation(
+            "Bip01 Pelvis", "Bip01 Pelvis", "original_animation"
+        ); common_transformations.AddOperation(&op_pelvis_translation);
+       
+        p.AddOperationToAllFiles(&common_transformations);
+
+        //=================================================================================
+        // Make foots stand where the foots are in the original animations.
+        //=================================================================================
+
+        // Stand at the same position as the left foot.
+        SolveFootOperation op_solve_foot_left(
+            "Bip01 L Foot", "Bip01 Pelvis",
+            "Bip01 L Foot"
+        );
+        p.AddOperationToFiles(&op_solve_foot_left, {
+            "pause",
+            "busting_through_wall",
+            "kick_punch_wall",
+            "bust_window",
+            "slidewall",
+            "eatbodytable",
+            "eatbody",
+            "eatbodystand",
+            "zombie_eating",
+            "eat_to_stand",
+        });
+
+        // Stand at the same position as the right foot.
+        SolveFootOperation op_solve_foot_right(
+            "Bip01 R Foot", "Bip01 Pelvis",
+            "Bip01 R Foot"
+        );
+        p.AddOperationToFiles(&op_solve_foot_right, {
+            "ventclimbidle",
+            "ventclimb",
+         });
+
+        // Stand at the same position as both foots.
+        SolveFootsOperation op_solve_foots(
+            "Bip01 L Foot", "Bip01 R Foot", "Bip01 Pelvis",
+            "Bip01 L Foot", "Bip01 R Foot"
+        );
+        p.AddOperationToFiles(&op_solve_foots, {
+            "soda",
+            "slideidle",
+            "ripdoor",
+            "zombie_pull_scientist",
+            "haulzombie",
+            "c2a3_snack_getup",
+        });
+
+        TranslateBoneInLocalSpaceOperation op_translations_local({
+            { "Bip01", glm::vec3(0, 0, 2.8) },
+        });
+
+        p.AddOperationToFiles(&op_translations_local, {
+            "pause",
+            "busting_through_wall",
+            "kick_punch_wall",
+            "bust_window",
+            "soda",
+            "slideidle",
+            "slidewall",
+            "ventclimbidle",
+            "ventclimb",
+            "deadidle",
+            "deadwall",
+            "eatbodytable",
+            "eatbody",
+            "eatbodystand",
+            "ripdoor",
+            "zombie_pull_scientist",
+            "zombie_eating",
+            "eat_to_stand",
+            "haulzombie",
+            "c2a3_snack_getup",
+        });
+
+        //=================================================================================
+        // Write operations.
+        //=================================================================================
+
+        OperationList write_operations("Write output files");
+        //WriteOBJOperation op_wobj(TARGET_DIRECTORY, smd_serializer); write_operations.AddOperation(&op_wobj);
+        WriteAnimationOperation op_wanim(TARGET_DIRECTORY, smd_serializer); write_operations.AddOperation(&op_wanim);
+        p.AddOperationToAllFiles(&write_operations);
+
+        p.Invoke();
+    }
+};
+
+class Convert_LD_BShift_Zombie_To_LD_Op4_Zombie_Soldier_Sequences
+{
+public:
+    void Invoke()
+    {
+        constexpr const char* INPUT_DIRECTORY_LD_ZOMBIE = INPUT_DIRECTORY_BASE"/""bshift/ld/zombie";
+
+        constexpr const char* TARGET_DIRECTORY = TARGET_DIRECTORY_BASE"/""zombie_soldier/animations";
+        constexpr const char* TARGET_REFERENCE = INPUT_DIRECTORY_BASE"/""gearbox/ld/zombie_soldier/idle1.smd"; // Used for animation bone length because the LD reference is scaled up.
+
+        SMDFileLoader smd_loader;
+        SMDSerializer smd_serializer;
+
+        s_animation_t target_reference;
+        smd_loader.LoadAnimation(TARGET_REFERENCE, target_reference);
+
+        AnimationPipeline p(smd_loader);
+        Variable var_target_reference;
+        p.SetContextReference("input_reference", target_reference, &var_target_reference);
+
+        const std::list<const char*> bshift_zombie_ld_animations = {
+            "left_tug",
+            "left_tug_idle",
+            "right_tug",
+            "right_tug_idle",
+        };
+
+        p.RegisterFiles(
+            bshift_zombie_ld_animations,
+            INPUT_DIRECTORY_LD_ZOMBIE,
+            INPUT_DIRECTORY_LD_ZOMBIE); // First time, the original animation directory is the same as input directory.
+
+
+        //=================================================================================
+        // Common transformations
+        //=================================================================================
+        OperationList common_transformations("Common transformations");
+
+        // Remove bone that are not needed for animation.
+        RemoveBoneOperation op_br({
+            "Bone01",
+            "Bone04",
+            "Bone07",
+        }); common_transformations.AddOperation(&op_br);
+
+        RenameBoneOperation op_rn_spine_bones({
+            { "Bip01 L Leg", "Bip01 L Thigh" },
+            { "Bip01 L Leg1", "Bip01 L Calf" },
+            { "Bip01 L Arm", "Bip01 L Clavicle" },
+            { "Bip01 L Arm1", "Bip01 L UpperArm" },
+            { "Bip01 L Arm2", "Bip01 L Forearm" },
+
+            { "Bip01 R Leg", "Bip01 R Thigh" },
+            { "Bip01 R Leg1", "Bip01 R Calf" },
+            { "Bip01 R Arm", "Bip01 R Clavicle" },
+            { "Bip01 R Arm1", "Bip01 R UpperArm" },
+            { "Bip01 R Arm2", "Bip01 R Forearm" },
+
+        }); common_transformations.AddOperation(&op_rn_spine_bones);
+
+        FixupBonesLengthsOperation op_fbl; common_transformations.AddOperation(&op_fbl);
+
+        // Move the pelvis to the same location as the original anim pelvis.
+        TranslateToBoneInWorldSpaceOperation op_pelvis_translation(
+            "Bip01 Pelvis", "Bip01 Pelvis", "original_animation"
+        ); common_transformations.AddOperation(&op_pelvis_translation);
+       
+        p.AddOperationToAllFiles(&common_transformations);
+
+        //=================================================================================
+        // Make foots stand where the foots are in the original animations.
+        //=================================================================================
+#if 0
+        // Stand at the same position as the left foot.
+        SolveFootOperation op_solve_foot_left(
+            "Bip01 L Foot", "Bip01 Pelvis",
+            "Bip01 L Foot"
+        );
+        p.AddOperationToFiles(&op_solve_foot_left, {
+            "pause",
+            "busting_through_wall",
+        });
+
+        // Stand at the same position as the right foot.
+        SolveFootOperation op_solve_foot_right(
+            "Bip01 R Foot", "Bip01 Pelvis",
+            "Bip01 R Foot"
+        );
+        p.AddOperationToFiles(&op_solve_foot_right, {
+            "ventclimbidle",
+            "ventclimb",
+         });
+
+        // Stand at the same position as both foots.
+        SolveFootsOperation op_solve_foots(
+            "Bip01 L Foot", "Bip01 R Foot", "Bip01 Pelvis",
+            "Bip01 L Foot", "Bip01 R Foot"
+        );
+        p.AddOperationToFiles(&op_solve_foots, {
+            "soda",
+            "slideidle",
+            "ripdoor",
+            "zombie_pull_scientist",
+            "haulzombie",
+            "c2a3_snack_getup",
+        });
+#endif
+
+
+        // Stand at the same position as both foots.
+        SolveFootsOperation op_solve_foots(
+            "Bip01 L Foot", "Bip01 R Foot", "Bip01 Pelvis",
+            "Bip01 L Foot", "Bip01 R Foot"
+        );
+        p.AddOperationToFiles(&op_solve_foots, {
+            "left_tug",
+            "left_tug_idle",
+            "right_tug",
+            "right_tug_idle",
+        });
+
+        TranslateBoneInLocalSpaceOperation op_translations_local({
+            { "Bip01", glm::vec3(0, 0, 2.8) },
+        });
+
+        p.AddOperationToAllFiles(&op_translations_local);
+
+        //=================================================================================
+        // Write operations.
+        //=================================================================================
+
+        OperationList write_operations("Write output files");
+        //WriteOBJOperation op_wobj(TARGET_DIRECTORY, smd_serializer); write_operations.AddOperation(&op_wobj);
+        WriteAnimationOperation op_wanim(TARGET_DIRECTORY, smd_serializer); write_operations.AddOperation(&op_wanim);
+        p.AddOperationToAllFiles(&write_operations);
+
+        p.Invoke();
+    }
+};
+
+class Convert_LD_Op4_Zombie_Soldier_To_HD_HL1_Zombie_Sequences
+{
+public:
+    void Invoke()
+    {
+        constexpr const char* INPUT_DIRECTORY_LD_ZOMBIE = INPUT_DIRECTORY_BASE"/""gearbox/ld/zombie_soldier";
+
+        constexpr const char* TARGET_DIRECTORY = TARGET_DIRECTORY_BASE"/""zombie/animations/hd";
+        constexpr const char* TARGET_REFERENCE = INPUT_DIRECTORY_BASE"/""hl1/hd/zombie/idle1.smd"; // Used for animation bone length because the HD reference is scaled up.
+
+        SMDFileLoader smd_loader;
+        SMDSerializer smd_serializer;
+
+        s_animation_t target_reference;
+        smd_loader.LoadAnimation(TARGET_REFERENCE, target_reference);
+
+        AnimationPipeline p(smd_loader);
+        Variable var_target_reference;
+        p.SetContextReference("input_reference", target_reference, &var_target_reference);
+
+        const std::list<const char*> op4_zombie_soldier_ld_animations = {
+            "dead_on_back",
+            "dead_on_stomach",
+            "throw_scientist",
+            "get_off_table",
+            "table_breathe",
+        };
+
+        p.RegisterFiles(
+            op4_zombie_soldier_ld_animations,
+            INPUT_DIRECTORY_LD_ZOMBIE,
+            INPUT_DIRECTORY_LD_ZOMBIE); // First time, the original animation directory is the same as input directory.
+
+
+        //=================================================================================
+        // Common transformations
+        //=================================================================================
+        OperationList common_transformations("Common transformations");
+
+        // Remove bone that are not needed for animation.
+        RemoveBoneOperation op_br({
+            "Bone01",
+            "Bone02",
+            "Bone07",
+            "Bone08",
+            "Bone10",
+            "Bone11",
+        }); common_transformations.AddOperation(&op_br);
+
+        FixupBonesLengthsOperation op_fbl; common_transformations.AddOperation(&op_fbl);
+
+        // There is no need to rotate bones here since they reliably have the same orientation.
+
+        // Move the pelvis to the same location as the original anim pelvis.
+        TranslateToBoneInWorldSpaceOperation op_pelvis_translation(
+            "Bip01 Pelvis", "Bip01 Pelvis", "original_animation"
+        ); common_transformations.AddOperation(&op_pelvis_translation);
+       
+        p.AddOperationToAllFiles(&common_transformations);
+
+        //=================================================================================
+        // Make foots stand where the foots are in the original animations.
+        //=================================================================================
+
+        // Stand at the same position as the left foot.
+        SolveFootOperation op_solve_foot(
+            "Bip01 L Foot", "Bip01 Pelvis",
+            "Bip01 L Foot"
+        );
+        p.AddOperationToFiles(&op_solve_foot, {
+            "throw_scientist",
+        });
+
+        TranslateBoneInLocalSpaceOperation op_translations_local({
+            { "Bip01", glm::vec3(0, 0, -0.8) },
+        });
+
+        p.AddOperationToFiles(&op_translations_local, {
+            "throw_scientist",
+        });
+
+        //=================================================================================
+        // Write operations.
+        //=================================================================================
+
+        OperationList write_operations("Write output files");
+        //WriteOBJOperation op_wobj(TARGET_DIRECTORY, smd_serializer); write_operations.AddOperation(&op_wobj);
+        WriteAnimationOperation op_wanim(TARGET_DIRECTORY, smd_serializer); write_operations.AddOperation(&op_wanim);
+        p.AddOperationToAllFiles(&write_operations);
+
+        p.Invoke();
+    }
+};
+
+class Convert_LD_HL1_Zombie_To_HD_HL1_Zombie_Sequences
+{
+public:
+    void Invoke()
+    {
+        constexpr const char* INPUT_DIRECTORY_LD_ZOMBIE = INPUT_DIRECTORY_BASE"/""hl1/ld/zombie";
+
+        constexpr const char* TARGET_DIRECTORY = TARGET_DIRECTORY_BASE"/""zombie/animations/hd";
+        constexpr const char* TARGET_REFERENCE = INPUT_DIRECTORY_BASE"/""hl1/hd/zombie/idle1.smd"; // Used for animation bone length because the HD reference is scaled up.
+
+        SMDFileLoader smd_loader;
+        SMDSerializer smd_serializer;
+
+        s_animation_t target_reference;
+        smd_loader.LoadAnimation(TARGET_REFERENCE, target_reference);
+
+        AnimationPipeline p(smd_loader);
+        Variable var_target_reference;
+        p.SetContextReference("input_reference", target_reference, &var_target_reference);
+
+        const std::list<const char*> hl1_zombie_ld_animations = {
+            "falling",
+            "busting_through_wall",
+            "deadidle",
+            "deadwall",
+            "zombie_pull_scientist",
+            "zombie_eating",
+            "eat_to_stand",
+            "c2a3_snack_getup",
+        };
+
+        p.RegisterFiles(
+            hl1_zombie_ld_animations,
+            INPUT_DIRECTORY_LD_ZOMBIE,
+            INPUT_DIRECTORY_LD_ZOMBIE); // First time, the original animation directory is the same as input directory.
+
+
+        //=================================================================================
+        // Common transformations
+        //=================================================================================
+        OperationList common_transformations("Common transformations");
+
+        // Remove bone that are not needed for animation.
+        RemoveBoneOperation op_br({
+            "Bone01",
+            "Bone04",
+            "Bone07",
+        }); common_transformations.AddOperation(&op_br);
+
+        RenameBoneOperation op_rn_spine_bones({
+            { "Bip01 L Leg", "Bip01 L Thigh" },
+            { "Bip01 L Leg1", "Bip01 L Calf" },
+            { "Bip01 L Arm", "Bip01 L Clavicle" },
+            { "Bip01 L Arm1", "Bip01 L UpperArm" },
+            { "Bip01 L Arm2", "Bip01 L Forearm" },
+
+            { "Bip01 R Leg", "Bip01 R Thigh" },
+            { "Bip01 R Leg1", "Bip01 R Calf" },
+            { "Bip01 R Arm", "Bip01 R Clavicle" },
+            { "Bip01 R Arm1", "Bip01 R UpperArm" },
+            { "Bip01 R Arm2", "Bip01 R Forearm" },
+
+        }); common_transformations.AddOperation(&op_rn_spine_bones);
+
+        FixupBonesLengthsOperation op_fbl; common_transformations.AddOperation(&op_fbl);
+
+        // Move the pelvis to the same location as the original anim pelvis.
+        TranslateToBoneInWorldSpaceOperation op_pelvis_translation(
+            "Bip01 Pelvis", "Bip01 Pelvis", "original_animation"
+        ); common_transformations.AddOperation(&op_pelvis_translation);
+       
+        p.AddOperationToAllFiles(&common_transformations);
+
+        //=================================================================================
+        // Make foots stand where the foots are in the original animations.
+        //=================================================================================
+
+        // Stand at the same position as the left foot.
+        SolveFootOperation op_solve_foot_left(
+            "Bip01 L Foot", "Bip01 Pelvis",
+            "Bip01 L Foot"
+        );
+        p.AddOperationToFiles(&op_solve_foot_left, {
+            "busting_through_wall",
+            "zombie_eating",
+            "eat_to_stand",
+        });
+
+        /*
+        // Stand at the same position as the right foot.
+        SolveFootOperation op_solve_foot_right(
+            "Bip01 R Foot", "Bip01 Pelvis",
+            "Bip01 R Foot"
+        );
+        p.AddOperationToFiles(&op_solve_foot_right, {
+            "ventclimbidle",
+            "ventclimb",
+         });
+         */
+
+        // Stand at the same position as both foots.
+        SolveFootsOperation op_solve_foots(
+            "Bip01 L Foot", "Bip01 R Foot", "Bip01 Pelvis",
+            "Bip01 L Foot", "Bip01 R Foot"
+        );
+        p.AddOperationToFiles(&op_solve_foots, {
+            "zombie_pull_scientist",
+            "c2a3_snack_getup",
+        });
+
+        TranslateBoneInLocalSpaceOperation op_translations_local({
+            { "Bip01", glm::vec3(0, 0, 1.7) },
+        });
+
+        p.AddOperationToFiles(&op_translations_local, {
+            "busting_through_wall",
+            "deadidle",
+            "deadwall",
+            "zombie_pull_scientist",
+            "zombie_eating",
+            "eat_to_stand",
+            "c2a3_snack_getup",
+        });
+
+        //=================================================================================
+        // Write operations.
+        //=================================================================================
+
+        OperationList write_operations("Write output files");
+        //WriteOBJOperation op_wobj(TARGET_DIRECTORY, smd_serializer); write_operations.AddOperation(&op_wobj);
+        WriteAnimationOperation op_wanim(TARGET_DIRECTORY, smd_serializer); write_operations.AddOperation(&op_wanim);
+        p.AddOperationToAllFiles(&write_operations);
+
+        p.Invoke();
+    }
+};
+
 int main()
 {
 #ifdef _DEBUG
@@ -5351,8 +6043,23 @@ int main()
 #if 0
     Convert_HD_Op4_Grunt_To_HD_Grunt_Sequences().Invoke();
 #endif
-#if 1
+#if 0
     Convert_HD_Op4_Grunt_To_HD_Massn_Sequences().Invoke();
+#endif
+#if 0
+    Convert_LD_HL1_Zombie_Soldier_To_LD_HL1_Zombie_Sequences().Invoke();
+#endif
+#if 0
+    Convert_LD_HL1_Zombie_To_LD_Op4_Zombie_Soldier_Sequences().Invoke();
+#endif
+#if 0
+    Convert_LD_BShift_Zombie_To_LD_Op4_Zombie_Soldier_Sequences().Invoke();
+#endif
+#if 0
+    Convert_LD_Op4_Zombie_Soldier_To_HD_HL1_Zombie_Sequences().Invoke();
+#endif
+#if 1
+    Convert_LD_HL1_Zombie_To_HD_HL1_Zombie_Sequences().Invoke();
 #endif
 
     //convert_HD_HL1_animations_to_LD_BlueShift(); // OBSOLETE !! DON'T DO

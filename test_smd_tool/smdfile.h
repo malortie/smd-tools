@@ -136,6 +136,14 @@ public:
 		const char* original_anim_left_foot_name,
 		const char* original_anim_right_foot_name
 	);
+	// Move pelvis position so that animation foot is at the same as the one in the original animation.
+	static void SolveFoot(
+		s_animation_t& anim,
+		const char* anim_foot_name,
+		const char* anim_pelvis_name,
+		const s_animation_t& original_animation,
+		const char* original_anim_foot_name
+	);
 	static void TranslateToBoneInWorldSpace(
 		s_animation_t& anim,
 		int bone,
